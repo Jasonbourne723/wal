@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
-	"os"
+	"fmt"
 	"path"
 	"strings"
 )
@@ -19,7 +19,7 @@ type Wal struct {
 
 type Options struct {
 	dirPath string
-	id      string
+	id      int
 	ext     string
 }
 
@@ -28,24 +28,20 @@ func (w *Wal) Open(options Options) error {
 	if !strings.HasPrefix(options.ext, ".") {
 		return ErrInVaildExt
 	}
-	segmentName := path.Join(options.dirPath, options.id+options.ext)
-
-	var segment = &Segment{}
-
-	file, err := os.OpenFile(segmentName, os.O_APPEND|os.O_RDWR, fileModePerm)
-	if err != nil {
-		return errors.New("file open failed")
-	}
-	segment.fd = file
+	var segment = NewSegment(SegmentFileName(options.dirPath, options.ext, options.id))
 	w.seg = segment
 	return nil
+}
+
+func SegmentFileName(dirPath string, ext string, id int) string {
+	return path.Join(dirPath, fmt.Sprintf("%03d"+ext, id))
 }
 
 func (w *Wal) Write(data []byte) (result ChunkPosition) {
 
 	l := len(data)
 	chunkHeader := ChunkHeader(l)
-	l += 2
+	l += chunkHeaderSize
 
 	if w.seg.currentBloockSize+l >= blockSize {
 		w.seg.currentBlockNumber++
@@ -61,7 +57,7 @@ func (w *Wal) Write(data []byte) (result ChunkPosition) {
 	return ChunkPosition{
 		BlockNumber: w.seg.currentBlockNumber,
 		ChunkOffset: w.seg.currentBloockSize - l,
-		ChunkSize:   l - 2,
+		ChunkSize:   l - chunkHeaderSize,
 	}
 }
 

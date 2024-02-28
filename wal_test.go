@@ -12,7 +12,7 @@ func TestWal(t *testing.T) {
 	if err := wal.Open(Options{
 		dirPath: "D:\\",
 		ext:     ".seg",
-		id:      "001",
+		id:      1,
 	}); err != nil {
 		fmt.Printf("err: %v\n", err)
 	}
@@ -32,5 +32,12 @@ func TestWal(t *testing.T) {
 	fmt.Printf("wal.Read(position2): %v\n", wal.Read(position2))
 
 	fmt.Printf("wal.Read(position1): %v\n", wal.Read(position1))
+}
 
+func TestMain(t *testing.T) {
+	i := 1
+
+	str := fmt.Sprintf("%05d.seg", i)
+
+	fmt.Printf("str: %v\n", str)
 }

@@ -2,7 +2,6 @@ package wal
 
 import "os"
 
-type SegmentID uint32
 type ChunkHeader uint16
 
 const (
@@ -13,27 +12,41 @@ const (
 )
 
 const (
-	chunkHeaderSize uint32 = 2
-
-	blockSize = 32 * KB
-
-	fileModePerm = 0644
+	chunkHeaderSize = 2
+	blockSize       = 32 * KB
+	fileModePerm    = 0644
 )
 
 type Segment struct {
-	//id                 SegmentID
 	fd                 *os.File
 	currentBlockNumber int
 	currentBloockSize  int
 	closed             bool
 }
 
+func NewSegment(filePath string) *Segment {
+	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_RDWR, fileModePerm)
+	if err != nil {
+		panic(err)
+	}
+	return &Segment{
+		fd:                 file,
+		currentBlockNumber: 0,
+		currentBloockSize:  0,
+		closed:             true,
+	}
+}
+
+func (s *Segment) Close() {
+
+	if !s.closed {
+		s.fd.Close()
+		s.closed = !s.closed
+	}
+}
+
 type ChunkPosition struct {
-	//SegmentId SegmentID
-	// BlockNumber The block number of the chunk in the segment file.
 	BlockNumber int
-	// ChunkOffset The start offset of the chunk in the segment file.
 	ChunkOffset int
-	// ChunkSize How many bytes the chunk data takes up in the segment file.
-	ChunkSize int
+	ChunkSize   int
 }
