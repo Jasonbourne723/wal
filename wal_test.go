@@ -34,10 +34,23 @@ func TestWal(t *testing.T) {
 	fmt.Printf("wal.Read(position1): %v\n", wal.Read(position1))
 }
 
-func TestMain(t *testing.T) {
-	i := 1
+func TestWalRead(t *testing.T) {
 
-	str := fmt.Sprintf("%05d.seg", i)
+	wal := &Wal{}
+	if err := wal.Open(Options{
+		dirPath: "D:\\",
+		ext:     ".seg",
+		id:      1,
+	}); err != nil {
+		fmt.Printf("err: %v\n", err)
+	}
+
+	var str = wal.Read(ChunkPosition{
+		BlockNumber: 0,
+		ChunkOffset: 0,
+		ChunkSize:   0,
+	})
 
 	fmt.Printf("str: %v\n", str)
+
 }

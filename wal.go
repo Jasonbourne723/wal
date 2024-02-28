@@ -63,10 +63,13 @@ func (w *Wal) Write(data []byte) (result ChunkPosition) {
 
 func (w *Wal) Read(position ChunkPosition) string {
 
-	offset := position.BlockNumber*blockSize + position.ChunkOffset + 2
+	lenOffset := position.BlockNumber*blockSize + position.ChunkOffset
+	lenBytes := make([]byte, 2)
+	w.seg.fd.ReadAt(lenBytes, int64(lenOffset))
 
-	bytes := make([]byte, position.ChunkSize)
-	w.seg.fd.ReadAt(bytes, int64(offset))
+	var l = int(binary.BigEndian.Uint16(lenBytes))
 
-	return string(bytes)
+	writeBytes := make([]byte, l)
+	w.seg.fd.ReadAt(writeBytes, int64(lenOffset+2))
+	return string(writeBytes)
 }
