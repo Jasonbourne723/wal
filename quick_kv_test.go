@@ -28,3 +28,14 @@ func TestQuickKV(t *testing.T) {
 	}
 
 }
+
+func TestRead(t *testing.T) {
+	kv := NewQuickKV()
+
+	if val, ok := kv.Get("name2"); ok {
+		fmt.Printf("name2: %v\n", string(val))
+	}
+	if val, ok := kv.Get("name1"); ok {
+		fmt.Printf("name1: %v\n", string(val))
+	}
+}

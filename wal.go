@@ -25,22 +25,6 @@ type Wal struct {
 	segments       map[uint8]*Segment
 }
 
-type Options struct {
-	dirPath string
-	id      int
-	ext     string
-}
-
-func (w *Wal) Open(options Options) error {
-
-	if !strings.HasPrefix(options.ext, ".") {
-		return ErrInVaildExt
-	}
-	// var segment = NewSegment(SegmentFileName(options.dirPath, options.ext, options.id))
-	// w.currentSegment = segment
-	return nil
-}
-
 func NewWal(options ...Option) *Wal {
 	wal := &Wal{
 		dirPath:  defaultDirPath,
@@ -115,4 +99,15 @@ func (w *Wal) Read(position ChunkPosition) []byte {
 	} else {
 		return data
 	}
+}
+
+func (w *Wal) ReadAll() [][]byte {
+	result := make([][]byte, 0)
+	for i := 1; i <= int(w.currentSegment.id); i++ {
+
+		if seg, ok := w.segments[uint8(i)]; ok {
+			result = append(result, seg.ReadAll()...)
+		}
+	}
+	return result
 }

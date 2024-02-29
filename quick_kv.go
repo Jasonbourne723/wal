@@ -3,7 +3,7 @@ package wal
 import "encoding/binary"
 
 type QuickKV struct {
-	data map[string]ChunkPosition
+	data map[string][]byte
 	wal  *Wal
 }
 
@@ -11,27 +11,33 @@ func NewQuickKV() *QuickKV {
 
 	wal := NewWal()
 	wal.LoadSegment()
-	return &QuickKV{
-		data: make(map[string]ChunkPosition, 10),
+	kv := &QuickKV{
+		data: make(map[string][]byte, 10),
 		wal:  wal,
 	}
+	datas := wal.ReadAll()
+	for _, v := range datas {
+		key, val := DeCodeToKeyValue(v)
+		kv.data[key] = val
+	}
+
+	return kv
 }
 
 func (q *QuickKV) Set(key string, value []byte) error {
 
-	position, err := q.wal.Write(EnCodeKeyValue(key, value))
+	_, err := q.wal.Write(EnCodeKeyValue(key, value))
 	if err != nil {
 		return err
 	}
-	q.data[key] = position
+	q.data[key] = value
 	return nil
 }
 
 func (q *QuickKV) Get(key string) ([]byte, bool) {
 
-	if position, ok := q.data[key]; ok {
-		bytes := q.wal.Read(position)
-		_, val := DeCodeToKeyValue(bytes)
+	if val, ok := q.data[key]; ok {
+
 		return val, true
 	}
 	return nil, false

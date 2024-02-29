@@ -8,6 +8,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 const (
@@ -28,11 +29,13 @@ type Segment struct {
 	currentBlockNumber int
 	currentBloockSize  int
 	closed             bool
+	rwMutex            *sync.RWMutex
 }
 
+// 创建新的Segment
 func NewSegment(dirPath string, id uint8, ext string) (*Segment, error) {
 
-	filePath := SegmentFileName(dirPath, id, ext)
+	filePath := BuildSegmentName(dirPath, id, ext)
 	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_APPEND|os.O_RDWR, fileModePerm)
 	if err != nil {
 		panic(err)
@@ -43,9 +46,11 @@ func NewSegment(dirPath string, id uint8, ext string) (*Segment, error) {
 		currentBlockNumber: 0,
 		currentBloockSize:  0,
 		closed:             false,
+		rwMutex:            new(sync.RWMutex),
 	}, nil
 }
 
+// 打开Segment
 func OpenSegment(dirPath string, fileName string) (*Segment, error) {
 
 	filePath := path.Join(dirPath, fileName)
@@ -67,18 +72,25 @@ func OpenSegment(dirPath string, fileName string) (*Segment, error) {
 	return &Segment{
 		id:                 uint8(id),
 		fd:                 file,
-		currentBlockNumber: int(offset)/blockSize,
+		currentBlockNumber: int(offset) / blockSize,
 		currentBloockSize:  int(offset),
 		closed:             false,
+		rwMutex:            new(sync.RWMutex),
 	}, nil
 }
 
-func SegmentFileName(dirPath string, id uint8, ext string) string {
+// 拼接Segment文件名称
+func BuildSegmentName(dirPath string, id uint8, ext string) string {
 	return path.Join(dirPath, fmt.Sprintf("%03d"+ext, id))
 }
 
+// 字节数组写入Segment
 func (s *Segment) Write(data []byte) (chunkPosition ChunkPosition, err error) {
 
+	s.rwMutex.Lock()
+	defer func() {
+		s.rwMutex.Unlock()
+	}()
 	chunkBytes := CodeChunk(data)
 
 	if blockSize-s.currentBlockNumber < len(chunkBytes) {
@@ -99,6 +111,7 @@ func (s *Segment) Write(data []byte) (chunkPosition ChunkPosition, err error) {
 	return
 }
 
+// 字节数组写入文件
 func (s *Segment) WriteToFile(data []byte) (int, error) {
 	l, err := s.fd.Write(data)
 	if err != nil {
@@ -111,7 +124,13 @@ func (s *Segment) WriteToFile(data []byte) (int, error) {
 	return l, nil
 }
 
+// 读文件
 func (s *Segment) Read(chunkPosition ChunkPosition) ([]byte, error) {
+
+	s.rwMutex.RLock()
+	defer func() {
+		s.rwMutex.RUnlock()
+	}()
 
 	offset := chunkPosition.BlockNumber*blockSize + chunkPosition.ChunkOffset
 
@@ -129,6 +148,56 @@ func (s *Segment) Read(chunkPosition ChunkPosition) ([]byte, error) {
 	}
 }
 
+func (s *Segment) ReadAll() [][]byte {
+
+	s.rwMutex.RLock()
+	defer func() {
+		s.rwMutex.RUnlock()
+	}()
+
+	result := make([][]byte, 0)
+	blockNumber := 0
+
+	for {
+		datas := s.ReadBlock(blockNumber)
+		if len(datas) == 0 {
+			break
+		}
+		blockNumber++
+		result = append(result, datas...)
+	}
+	return result
+}
+
+func (s *Segment) ReadBlock(blockNumber int) [][]byte {
+	blockData := make([]byte, blockSize)
+	s.fd.ReadAt(blockData, int64(blockNumber*blockSize))
+	offset := 0
+	result := make([][]byte, 0)
+	for {
+
+		if offset+chunkHeaderSize >= blockSize {
+			break
+		}
+
+		headerBytes := blockData[offset : offset+chunkHeaderSize]
+		header := DecodeChunkHeader(headerBytes)
+		if header.len > 0 {
+			data := blockData[offset+chunkHeaderSize : offset+chunkHeaderSize+int(header.len)]
+			if Check(header, data) {
+				result = append(result, data)
+			} else {
+				break
+			}
+		} else {
+			break
+		}
+		offset += chunkHeaderSize + int(header.len)
+	}
+	return result
+}
+
+// 关闭文件
 func (s *Segment) Close() {
 
 	if !s.closed {
