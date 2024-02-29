@@ -1,20 +1,28 @@
 package wal
 
 import (
-	"bytes"
-	"encoding/binary"
 	"errors"
-	"fmt"
-	"path"
+	"log"
+	"os"
 	"strings"
+)
+
+const (
+	defaultDirPath = "./"
+	defaultExt     = ".seg"
 )
 
 var (
 	ErrInVaildExt = errors.New("ext invaild")
 )
 
+type Option func(*Wal)
+
 type Wal struct {
-	seg *Segment
+	currentSegment *Segment
+	dirPath        string
+	ext            string
+	segments       map[uint8]*Segment
 }
 
 type Options struct {
@@ -28,48 +36,83 @@ func (w *Wal) Open(options Options) error {
 	if !strings.HasPrefix(options.ext, ".") {
 		return ErrInVaildExt
 	}
-	var segment = NewSegment(SegmentFileName(options.dirPath, options.ext, options.id))
-	w.seg = segment
+	// var segment = NewSegment(SegmentFileName(options.dirPath, options.ext, options.id))
+	// w.currentSegment = segment
 	return nil
 }
 
-func SegmentFileName(dirPath string, ext string, id int) string {
-	return path.Join(dirPath, fmt.Sprintf("%03d"+ext, id))
-}
-
-func (w *Wal) Write(data []byte) (result ChunkPosition) {
-
-	l := len(data)
-	chunkHeader := ChunkHeader(l)
-	l += chunkHeaderSize
-
-	if w.seg.currentBloockSize+l >= blockSize {
-		w.seg.currentBlockNumber++
-		w.seg.currentBloockSize = 0
+func NewWal(options ...Option) *Wal {
+	wal := &Wal{
+		dirPath:  defaultDirPath,
+		ext:      defaultExt,
+		segments: make(map[uint8]*Segment),
 	}
 
-	bytesBuffer := bytes.NewBuffer([]byte{})
-	binary.Write(bytesBuffer, binary.BigEndian, chunkHeader)
-	w.seg.fd.Write(bytesBuffer.Bytes())
-	w.seg.fd.Write(data)
-	w.seg.currentBloockSize += l
+	for _, option := range options {
+		option(wal)
+	}
+	return wal
+}
 
-	return ChunkPosition{
-		BlockNumber: w.seg.currentBlockNumber,
-		ChunkOffset: w.seg.currentBloockSize - l,
-		ChunkSize:   l - chunkHeaderSize,
+func WithDirPath(dirPath string) Option {
+	return func(w *Wal) {
+		w.dirPath = dirPath
 	}
 }
 
-func (w *Wal) Read(position ChunkPosition) string {
+func WithExt(ext string) Option {
+	return func(w *Wal) {
+		w.ext = ext
+	}
+}
 
-	lenOffset := position.BlockNumber*blockSize + position.ChunkOffset
-	lenBytes := make([]byte, 2)
-	w.seg.fd.ReadAt(lenBytes, int64(lenOffset))
+func (w *Wal) LoadSegment() error {
+	entrys, err := os.ReadDir(w.dirPath)
+	if err != nil {
+		return err
+	}
 
-	var l = int(binary.BigEndian.Uint16(lenBytes))
+	var currentSegmentId uint8 = 0
+	for _, entry := range entrys {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), w.ext) {
+			seg, err := OpenSegment(w.dirPath, entry.Name())
+			if err != nil {
+				log.Fatal(entry.Name(), "open failed")
+			}
+			w.segments[seg.id] = seg
+			if seg.id > currentSegmentId {
+				currentSegmentId = seg.id
+			}
+		}
+	}
 
-	writeBytes := make([]byte, l)
-	w.seg.fd.ReadAt(writeBytes, int64(lenOffset+2))
-	return string(writeBytes)
+	if currentSegmentId == 0 {
+		currentSegmentId++
+		if w.currentSegment, err = NewSegment(w.dirPath, currentSegmentId, w.ext); err != nil {
+			return err
+		} else {
+			w.segments[currentSegmentId] = w.currentSegment
+		}
+	} else {
+		w.currentSegment = w.segments[currentSegmentId]
+	}
+	return nil
+}
+
+func (w *Wal) Write(data []byte) (ChunkPosition, error) {
+	return w.currentSegment.Write(data)
+}
+
+func (w *Wal) Read(position ChunkPosition) []byte {
+
+	seg, ok := w.segments[position.SegmentId]
+	if !ok {
+		return nil
+	}
+
+	if data, err := seg.Read(position); err != nil {
+		panic(err)
+	} else {
+		return data
+	}
 }
