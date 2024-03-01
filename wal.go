@@ -8,8 +8,9 @@ import (
 )
 
 const (
-	defaultDirPath = "./"
-	defaultExt     = ".seg"
+	defaultDirPath  = "./"
+	defaultExt      = ".seg"
+	defaultSyncType = everySec
 )
 
 var (
@@ -22,6 +23,7 @@ type Wal struct {
 	currentSegment *Segment
 	dirPath        string
 	ext            string
+	syncType       SyncType
 	segments       map[uint8]*Segment
 }
 
@@ -29,6 +31,7 @@ func NewWal(options ...Option) *Wal {
 	wal := &Wal{
 		dirPath:  defaultDirPath,
 		ext:      defaultExt,
+		syncType: everySec,
 		segments: make(map[uint8]*Segment),
 	}
 
@@ -59,7 +62,7 @@ func (w *Wal) LoadSegment() error {
 	var currentSegmentId uint8 = 0
 	for _, entry := range entrys {
 		if !entry.IsDir() && strings.HasSuffix(entry.Name(), w.ext) {
-			seg, err := OpenSegment(w.dirPath, entry.Name())
+			seg, err := OpenSegment(w.dirPath, entry.Name(), w.syncType)
 			if err != nil {
 				log.Fatal(entry.Name(), "open failed")
 			}
@@ -72,7 +75,7 @@ func (w *Wal) LoadSegment() error {
 
 	if currentSegmentId == 0 {
 		currentSegmentId++
-		if w.currentSegment, err = NewSegment(w.dirPath, currentSegmentId, w.ext); err != nil {
+		if w.currentSegment, err = NewSegment(w.dirPath, currentSegmentId, w.ext, w.syncType); err != nil {
 			return err
 		} else {
 			w.segments[currentSegmentId] = w.currentSegment

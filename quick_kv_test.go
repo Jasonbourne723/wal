@@ -3,6 +3,7 @@ package wal
 import (
 	"fmt"
 	"testing"
+	"time"
 )
 
 func TestQuickKV(t *testing.T) {
@@ -38,4 +39,9 @@ func TestRead(t *testing.T) {
 	if val, ok := kv.Get("name1"); ok {
 		fmt.Printf("name1: %v\n", string(val))
 	}
+
+	//c := make(chan int, 1)
+
+	<-time.After(time.Second * 3)
+
 }
