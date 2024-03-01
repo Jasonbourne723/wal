@@ -101,17 +101,12 @@ func CreateSegment(id uint8, file *os.File, currentBlockNumber int, currentBlock
 }
 
 func (s *Segment) SyncEverySec() {
-	ch := make(chan int)
 	for {
 		if s.closed {
 			break
 		}
-		select {
-		case num := <-ch:
-			fmt.Printf("num: %v\n", num)
-		case <-time.After(time.Second):
-			s.fd.Sync()
-		}
+		<-time.After(time.Second)
+		s.fd.Sync()
 	}
 }
 

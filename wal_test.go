@@ -23,3 +23,16 @@ func TestWal(t *testing.T) {
 	fmt.Printf("wal.Read(position1): %v\n", string(wal.Read(position1)))
 	fmt.Printf("wal.Read(position2): %v\n", string(wal.Read(position2)))
 }
+
+func TestContinue(t *testing.T) {
+re:
+	for j := 0; j < 3; j++ {
+
+		for i := 0; i < 3; i++ {
+
+			fmt.Printf("i: %v\n", i)
+			break re
+		}
+	}
+
+}
