@@ -78,7 +78,9 @@ func OpenSegment(dirPath string, fileName string, syncType SyncType) (*Segment, 
 	if err != nil {
 		return nil, err
 	}
-	seg := CreateSegment(uint8(id), file, int(offset)/blockSize, int(offset), syncType)
+	blockNum := int(offset) / blockSize
+	currentBlockSize := int(offset) - blockNum*blockSize
+	seg := CreateSegment(uint8(id), file, blockNum, currentBlockSize, syncType)
 	return seg, nil
 }
 
@@ -124,12 +126,15 @@ func (s *Segment) Write(data []byte) (chunkPosition ChunkPosition, err error) {
 	}()
 	chunkBytes := CodeChunk(data)
 
-	if blockSize-s.currentBlockNumber < len(chunkBytes) {
+	if blockSize-s.currentBloockSize < len(chunkBytes) {
+		paddingBuf := make([]byte, blockSize-s.currentBloockSize)
+		_, err = s.WriteToFile(paddingBuf)
 		s.currentBlockNumber += 1
 		s.currentBloockSize = 0
+
 	}
 
-	l, err := s.WriteToFile(chunkBytes)
+	_, err = s.WriteToFile(chunkBytes)
 	if err != nil {
 		return chunkPosition, err
 	}
@@ -138,12 +143,14 @@ func (s *Segment) Write(data []byte) (chunkPosition ChunkPosition, err error) {
 		BlockNumber: s.currentBlockNumber,
 		ChunkOffset: s.currentBloockSize,
 	}
-	s.currentBloockSize += l
+	s.currentBloockSize += len(chunkBytes)
 	return
 }
 
 // 字节数组写入文件
 func (s *Segment) WriteToFile(data []byte) (l int, err error) {
+
+	//offset := int64(s.currentBlockNumber*blockSize) + int64(s.currentBloockSize)
 	if l, err = s.fd.Write(data); err != nil {
 		return
 	}
@@ -191,31 +198,36 @@ func (s *Segment) ReadAll() [][]byte {
 	blockNumber := 0
 
 	for {
-		datas := s.ReadBlock(blockNumber)
-		if len(datas) == 0 {
+		datas, err := s.ReadBlock(blockNumber)
+		result = append(result, datas...)
+		if err == io.EOF {
 			break
 		}
 		blockNumber++
-		result = append(result, datas...)
 	}
 	return result
 }
 
 // 读文件块
-func (s *Segment) ReadBlock(blockNumber int) [][]byte {
+func (s *Segment) ReadBlock(blockNumber int) (result [][]byte, err error) {
 	blockData := make([]byte, blockSize)
-	s.fd.ReadAt(blockData, int64(blockNumber*blockSize))
 	offset := 0
-	result := make([][]byte, 0)
+	result = make([][]byte, 0)
+	n, err := s.fd.ReadAt(blockData, int64(blockNumber*blockSize))
 	for {
 
-		if offset+chunkHeaderSize >= blockSize {
+		if offset+chunkHeaderSize >= n {
 			break
 		}
 
 		headerBytes := blockData[offset : offset+chunkHeaderSize]
 		header := DecodeChunkHeader(headerBytes)
 		if header.len > 0 {
+
+			if offset+chunkHeaderSize+int(header.len) > n {
+				break
+			}
+
 			data := blockData[offset+chunkHeaderSize : offset+chunkHeaderSize+int(header.len)]
 			if Check(header, data) {
 				result = append(result, data)
@@ -227,7 +239,7 @@ func (s *Segment) ReadBlock(blockNumber int) [][]byte {
 		}
 		offset += chunkHeaderSize + int(header.len)
 	}
-	return result
+	return result, err
 }
 
 // 关闭文件
